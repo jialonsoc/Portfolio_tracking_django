@@ -277,10 +277,4 @@ No recalcula en el frontend: consume la API.
 /api/portfolios/2/weights/?fecha_inicio=2022-02-15&fecha_fin=2023-02-16
 ```
 
----
 
-## Notas para la entrevista
-
-1. Persistimos hechos (`p`, `w_0`, `c_0`); derivamos lo temporal (`x`, `w_t`, `V_t`).
-2. Separación services / selectors / APIs facilita testear y explicar el flujo.
-3. El dashboard es una view delgada; la verdad de negocio vive en backend.
