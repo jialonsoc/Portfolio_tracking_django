@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comparación de portafolios</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f8; color: #15202b; }
+    header, .controls, .status, .grid { padding: 1rem 1.5rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+    label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: #5b6b7c; }
+    input, button { padding: 0.5rem 0.75rem; font: inherit; }
+    button { background: #0b6e4f; color: white; border: 0; border-radius: 8px; cursor: pointer; }
+    .panel { background: white; border-radius: 12px; padding: 1rem; margin: 0 1.5rem 1rem; border: 1px solid #d7e0ea; }
+    .chart-wrap { height: 340px; position: relative; }
+    .grid.weights { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+    @media (min-width: 1000px) { .grid.weights { grid-template-columns: 1fr 1fr; } }
+    .status.error { color: #b42318; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Comparación de portafolios</h1>
+    <p>Stacked area de <em>w<sub>i,t</sub></em> y líneas de <em>V<sub>t</sub></em> vía API.</p>
+  </header>
+
+  <div class="controls">
+    <label>Fecha inicio
+      <input type="date" id="fecha_inicio" value="{{ default_start }}" />
+    </label>
+    <label>Fecha fin
+      <input type="date" id="fecha_fin" value="{{ default_end }}" />
+    </label>
+    <button id="btn-load" type="button">Actualizar</button>
+  </div>
+
+  <div id="status" class="status">Cargando...</div>
+
+  <div class="panel">
+    <h2>V<sub>t</sub></h2>
+    <div class="chart-wrap"><canvas id="valueChart"></canvas></div>
+  </div>
+
+  <div class="grid weights">
+    <div class="panel">
+      <h2>Weights — Portafolio 1</h2>
+      <div class="chart-wrap"><canvas id="weightChart1"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Weights — Portafolio 2</h2>
+      <div class="chart-wrap"><canvas id="weightChart2"></canvas></div>
+    </div>
+  </div>
+  {{ portfolios_json|json_script:"portfolios-data" }}
+  <script>
+    const PORTFOLIOS = JSON.parse(
+      document.getElementById("portfolios-data").textContent
+    );
+
+    const COLORS = [
+      "#0b6e4f","#c45c26","#2f6fed","#8b5cf6","#0ea5a0",
+      "#db2777","#ca8a04","#334155","#16a34a","#ea580c",
+      "#0284c7","#7c3aed","#059669","#b45309","#be123c",
+      "#475569","#0891b2"
+    ];
+
+    let valueChart = null;
+    const weightCharts = {};
+
+    function setStatus(msg, isError = false) {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.className = "status" + (isError ? " error" : "");
+    }
+
+    function buildValueChart(seriesByPortfolio) {
+      if (valueChart) valueChart.destroy();
+      const labels = seriesByPortfolio[0]?.series.map(p => p.date) || [];
+      valueChart = new Chart(document.getElementById("valueChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: seriesByPortfolio.map((p, idx) => ({
+            label: p.portfolio,
+            data: p.series.map(x => Number(x.value)),
+            borderColor: idx === 0 ? "#0b6e4f" : "#c45c26",
+            tension: 0.2,
+            pointRadius: 0,
+            borderWidth: 2,
+          })),
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            y: {
+              ticks: {
+                callback: v => (v / 1e9).toFixed(2) + "B",
+              },
+            },
+          },
+        },
+      });
+    }
+
+    function buildStackedArea(canvasId, series) {
+      if (weightCharts[canvasId]) weightCharts[canvasId].destroy();
+      if (!series?.length) return;
+
+      const labels = series.map(p => p.date);
+      const assets = Object.keys(series[0].weights).sort();
+      const datasets = assets.map((asset, idx) => ({
+        label: asset,
+        data: series.map(p => Number(p.weights[asset] || 0)),
+        backgroundColor: COLORS[idx % COLORS.length] + "bb",
+        borderColor: COLORS[idx % COLORS.length],
+        fill: idx === 0 ? "origin" : "-1",
+        tension: 0.15,
+        pointRadius: 0,
+      }));
+
+      weightCharts[canvasId] = new Chart(document.getElementById(canvasId), {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: ctx => `${ctx.dataset.label}: ${(ctx.parsed.y * 100).toFixed(2)}%`,
+              },
+            },
+          },
+          scales: {
+            x: { stacked: true },
+            y: {
+              stacked: true,
+              min: 0,
+              max: 1,
+              ticks: { callback: v => (v * 100).toFixed(0) + "%" },
+            },
+          },
+        },
+      });
+    }
+
+    async function loadData() {
+      const fechaInicio = document.getElementById("fecha_inicio").value;
+      const fechaFin = document.getElementById("fecha_fin").value;
+      if (!fechaInicio || !fechaFin) {
+        setStatus("Indica ambas fechas.", true);
+        return;
+      }
+
+      setStatus("Consultando API...");
+      try {
+        const qs = `fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+
+        // V_t de ambos portafolios
+        const valueResponses = await Promise.all(
+          PORTFOLIOS.map(p =>
+            fetch(`/api/portfolios/${p.id}/values/?${qs}`).then(r => {
+              if (!r.ok) throw new Error(`Error values portfolio ${p.id}`);
+              return r.json();
+            })
+          )
+        );
+        buildValueChart(valueResponses);
+
+        // w_i,t por portafolio
+        for (const p of PORTFOLIOS) {
+          const data = await fetch(`/api/portfolios/${p.id}/weights/?${qs}`).then(r => {
+            if (!r.ok) throw new Error(`Error weights portfolio ${p.id}`);
+            return r.json();
+          });
+          const canvasId = p.name.includes("1") ? "weightChart1" : "weightChart2";
+          buildStackedArea(canvasId, data.series);
+        }
+
+        setStatus(`OK: ${fechaInicio} → ${fechaFin}`);
+      } catch (e) {
+        setStatus(e.message, true);
+      }
+    }
+
+    document.getElementById("btn-load").addEventListener("click", loadData);
+    window.addEventListener("DOMContentLoaded", loadData);
+  </script>
+</body>
+</html>
