@@ -88,11 +88,11 @@ Flujo de datos:
 
 ```
 datos.xlsx
-   → service ETL (load_datos)
-   → BD (Asset, Portfolio, Price, InitialWeight, Holding)
-   → selectors (cálculo V_t / w_i,t)
-   → APIs REST
-   → dashboard (fetch + Chart.js)
+  service ETL (load_datos)
+  BD (Asset, Portfolio, Price, InitialWeight, Holding)
+  selectors (cálculo V_t / w_i,t)
+  APIs REST
+  dashboard (fetch + Chart.js) **Hecho con IA**
 ```
 
 ---
@@ -109,8 +109,8 @@ Campo principal: `name` (único).
 Portafolio con:
 
 - `name`
-- `initial_value` → \(V_0\)
-- `start_date` → fecha \(t=0\)
+- `initial_value`: \(V_0\)
+- `start_date`: fecha \(t=0\)
 
 ### `Price`
 
@@ -147,8 +147,8 @@ Cantidad \(c_{i,0}\) (invariante en el tiempo):
 
 Comando: `python manage.py load_datos`
 
-1. Lee hoja `weights` → crea `Asset`, `Portfolio`, `InitialWeight`
-2. Lee hoja `Precios` → crea `Price` (`bulk_create`)
+1. Lee hoja `weights` después crea `Asset`, `Portfolio`, `InitialWeight`
+2. Lee hoja `Precios` después crea `Price` (`bulk_create`)
 3. Calcula y guarda `Holding`:
 
 \[
@@ -178,12 +178,10 @@ Los selectors **leen** con el ORM y calculan series. No escriben en BD.
 4. \(w_{i,t} = x_{i,t} / V_t\)
 5. Devuelve `[{date, portfolio_value, weights: {activo: w}}, ...]`
 
-Detalle ORM útil:
+Detalle:
 
 - `select_related("asset")` evita N+1
 - `.values(...)` trae solo columnas necesarias
-
----
 
 ## APIs (`portfolios/apis.py`)
 
